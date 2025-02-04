@@ -193,6 +193,23 @@ impl WebServer {
     }
 
     pub(crate) async fn shutdown(&mut self) {
+        if matches!(self.platform, Platform::Android) {
+            use std::process::{Command, Stdio};
+            if let Err(err) = Command::new("adb")
+                .arg("reverse")
+                .arg("--remove")
+                .arg(format!("tcp:{}", self.devserver_port))
+                .stderr(Stdio::piped())
+                .stdout(Stdio::piped())
+                .output()
+            {
+                tracing::error!(
+                    "failed to remove forwarded port {}: {err}",
+                    self.devserver_port
+                );
+            }
+        }
+
         self.send_shutdown().await;
         for socket in self.hot_reload_sockets.drain(..) {
             _ = socket.close().await;
@@ -354,6 +371,9 @@ impl WebServer {
     /// ... which it is, but they don't know that 0.0.0.0 also serves localhost.
     pub fn displayed_address(&self) -> Option<SocketAddr> {
         let mut address = self.server_address()?;
+
+        // Set the port to the devserver port since that's usually what people expect
+        address.set_port(self.devserver_port);
 
         if self.devserver_bind_ip == IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)) {
             address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), address.port());

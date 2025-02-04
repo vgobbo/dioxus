@@ -59,7 +59,8 @@ use std::{
 pub const CLI_ENABLED_ENV: &str = "DIOXUS_CLI_ENABLED";
 pub const SERVER_IP_ENV: &str = "IP";
 pub const SERVER_PORT_ENV: &str = "PORT";
-pub const DEVSERVER_RAW_ADDR_ENV: &str = "DIOXUS_DEVSERVER_ADDR";
+pub const DEVSERVER_IP_ENV: &str = "DIOXUS_DEVSERVER_IP";
+pub const DEVSERVER_PORT_ENV: &str = "DIOXUS_DEVSERVER_PORT";
 pub const ALWAYS_ON_TOP_ENV: &str = "DIOXUS_ALWAYS_ON_TOP";
 pub const ASSET_ROOT_ENV: &str = "DIOXUS_ASSET_ROOT";
 pub const APP_TITLE_ENV: &str = "DIOXUS_APP_TITLE";
@@ -100,10 +101,16 @@ macro_rules! read_env_config {
 /// For reference, the devserver typically lives on `127.0.0.1:8080` and serves the devserver websocket
 /// on `127.0.0.1:8080/_dioxus`.
 pub fn devserver_raw_addr() -> Option<SocketAddr> {
-    std::env::var(DEVSERVER_RAW_ADDR_ENV)
-        .unwrap_or_else(|_| "127.0.0.1:8080".to_string())
-        .parse()
-        .ok()
+    let ip = std::env::var(DEVSERVER_IP_ENV).ok()?;
+    let port = std::env::var(DEVSERVER_PORT_ENV).ok()?;
+
+    if cfg!(target_os = "android") {
+        // Since `adb reverse` is used for Android, the 127.0.0.1 will always be
+        // the correct IP address.
+        return Some(format!("127.0.0.1:{}", port).parse().unwrap());
+    }
+
+    format!("{}:{}", ip, port).parse().ok()
 }
 
 /// Get the address of the devserver for use over a websocket
@@ -288,5 +295,14 @@ pub fn out_dir() -> Option<PathBuf> {
 ///
 /// This is designed with desktop executables in mind.
 pub fn session_cache_dir() -> Option<PathBuf> {
+    if cfg!(target_os = "android") {
+        return Some(android_session_cache_dir());
+    }
+
     std::env::var(SESSION_CACHE_DIR).ok().map(PathBuf::from)
+}
+
+/// The session cache directory for android
+pub fn android_session_cache_dir() -> PathBuf {
+    PathBuf::from("/data/local/tmp/dx/")
 }
